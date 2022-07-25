@@ -1,19 +1,24 @@
 module CoinVault::Vault {
 
-    // TODO: Vault struct to store arbitrary number of `ManageCoin`s
+    use aptos_framework::coin;
 
+    use std::string;
+
+    /// Name of
     struct Coin has key, store {
+        name: std::string,
         value: u64,
     }
 
+    // TODO: Vault struct to store arbitrary number of `ManageCoin`s
+
+    /// Struct for vault
     struct Vault has key {
         coin: Coin
     }
 
-    public fun init_vault(&mut)
 
     // TODO: Deposit and Withdraw functions: users can only deposit/withdraw their own funds and not other users'
-
 
     public fun deposit(coin: &mut Coin, vault: &mut Vault, amount: u64): Vault {
         coin.value = coin.value - amount;
@@ -36,9 +41,16 @@ module CoinVault::Vault {
         // Undo pause function
     }
 
+
     //TODO: Tests
+
     #[test]
     fun deposit_test() {
+        assert!()
+    }
+
+    #[test]
+    fun withdraw_test() {
         assert!()
     }
 }
