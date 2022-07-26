@@ -2,10 +2,9 @@
 name = "aptos-coin-vault"
 version = "0.0.0"
 
-[dependencies.AptosFramework]
-git = 'https://github.com/aptos-labs/aptos-core'
-subdir = 'aptos-move/framework/aptos-framework'
-rev = 'devnet'
+[dependencies]
+AptosFramework = { local = "../../aptos-core/aptos-move/framework/aptos-framework" }
+
 
 [addresses]
 
