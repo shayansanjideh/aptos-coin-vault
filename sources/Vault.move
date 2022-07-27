@@ -1,56 +1,29 @@
 module CoinVault::Vault {
 
+    use std::signer;
+
+    use aptos_framework::account;
     use aptos_framework::coin;
+    use aptos_framework::managed_coin;
 
-    use std::string;
 
-    /// Name of
-    struct Coin has key, store {
-        name: std::string,
-        value: u64,
+    /// records the address of the user depositing a certain `Managedcoin` in a vault and the number of coins depositied
+    struct Share has store {
+        user_addr: address,
+        // coin: coin::,
+        num_coins: u64
     }
 
-    // TODO: Vault struct to store arbitrary number of `ManageCoin`s
-
-    /// Struct for vault
     struct Vault has key {
-        coin: Coin
+        share_record: vector<Share>,
+        total_shares: u64,
+        signer_capability: account::SignerCapability,
     }
 
-
-    // TODO: Deposit and Withdraw functions: users can only deposit/withdraw their own funds and not other users'
-
-    public fun deposit(coin: &mut Coin, vault: &mut Vault, amount: u64): Vault {
-        coin.value = coin.value - amount;
-        vault.coin = coin.value + amount
-    }
-
-    public fun withdraw(coin: &mut Coin, vault: &mut Vault, amount: u64): Coin {
-        vault.coin = coin.value - amount;
-        coin.value = coin.value + amount
-    }
+    const EACCOUNT_NOT_FOUND: u64 = 0;
+    const ERESOURCE_DNE: u64 = 1;
+    const EINSUFFICIENT_BALANCE: u64 = 2;
 
 
-    // TODO: Admin only functions: Pause and Unpause
-    /// Emergency stop: pause and unpause all trading
-    public fun pause() {
-        // If user calls either the deposit or withdraw functions, abort it
-    }
 
-    public fun unpause() {
-        // Undo pause function
-    }
-
-
-    //TODO: Tests
-
-    #[test]
-    fun deposit_test() {
-        assert!()
-    }
-
-    #[test]
-    fun withdraw_test() {
-        assert!()
-    }
 }
