@@ -6,7 +6,12 @@ module CoinVault::Vault {
     use std::signer::address_of;
 
     use aptos_framework::account;
-    use aptos_framework::coin::Coin;
+    use aptos_framework::coin::{Self, Coin};
+
+    #[test_only]
+    use std::signer;
+    #[test_only]
+    use aptos_framework::managed_coin;
 
     // Uses <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -95,17 +100,41 @@ module CoinVault::Vault {
 
     // Tests >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    /// Test coin type
-    struct TestCoin {}
+    #[test_only]
+    /// VaultCoin struct to be used in tests
+    struct VaultCoin {}
 
     // The admin will be defined by account address 0x1.
     // Any other account (i.e. a user) will have account address 0x2.
 
     #[test(account = @0x1)]
-    public fun init_vault_test(account: signer)
-    acquires Vault {
-        let test_coin = initialize<TestCoin>()
-    };
+    /// Initialize a coin, initialize a vault, and check to make sure it exists
+    public fun init_vault_test(account: signer) {
+        // First initialize a test coin, Vault Coin
+        managed_coin::initialize<VaultCoin>(
+            &account,
+            b"Vault Coin",
+            b"VTC",
+            4,
+            true
+        );
+        assert!(coin::is_coin_initialized<VaultCoin>(), 0);
+
+        managed_coin::register<VaultCoin>(&account);
+        let account_addr = address_of(&account);
+        managed_coin::mint<VaultCoin>(&account, account_addr, 20);
+        assert!(coin::balance<VaultCoin>(account_addr) == 20, 1);
+
+        // Next, initialize the vault itself
+        initialize<VaultCoin>(
+            &signer,
+            b"seed",
+            VaultCoin,
+        );
+
+        // Check to see if the vault exists
+        assert!(exists<Vault<VaultCoin>>(account_addr))
+    }
 
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
