@@ -126,7 +126,7 @@ module CoinVault::Vault {
         assert!(coin::balance<VaultCoin>(account_addr) == 20, 1);
 
         // Next, initialize the vault itself
-        initialize<VaultCoin>(
+        let vault = initialize(
             &signer,
             b"seed",
             VaultCoin,
@@ -135,7 +135,6 @@ module CoinVault::Vault {
         // Check to see if the vault exists
         assert!(exists<Vault<VaultCoin>>(account_addr))
     }
-
 
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
