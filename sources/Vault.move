@@ -136,7 +136,6 @@ module CoinVault::Vault {
         assert!(exists<Vault<VaultCoin>>(account_addr))
     }
 
-
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 }
