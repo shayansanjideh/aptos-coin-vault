@@ -109,7 +109,8 @@ module CoinVault::Vault {
 
     #[test(account = @0x1)]
     /// Initialize a coin, initialize a vault, and check to make sure it exists
-    public fun init_vault_test(account: signer) {
+    public fun init_vault_test(account: signer)
+    acquires Vault {
         // First initialize a test coin, Vault Coin
         managed_coin::initialize<VaultCoin>(
             &account,
@@ -124,16 +125,17 @@ module CoinVault::Vault {
         let account_addr = address_of(&account);
         managed_coin::mint<VaultCoin>(&account, account_addr, 20);
         assert!(coin::balance<VaultCoin>(account_addr) == 20, 1);
+        //let vault_coin = &borrow_global<Vault<VaultCoin>>(account_addr).coin;
 
         // Next, initialize the vault itself
         initialize<VaultCoin>(
-            &signer,
+            &account,
             b"seed",
-            VaultCoin,
+
         );
 
         // Check to see if the vault exists
-        assert!(exists<Vault<VaultCoin>>(account_addr))
+        assert!(exists<Vault<VaultCoin>>(account_addr), E_RESOURCE_DNE)
     }
 
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
