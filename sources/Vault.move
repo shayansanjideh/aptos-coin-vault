@@ -6,35 +6,25 @@ module CoinVault::Vault {
     use std::signer::address_of;
 
     use aptos_framework::account;
-    use aptos_framework::coin::{Self, Coin};
+    use aptos_framework::coin::{Self, Coin, transfer};
 
     #[test_only]
     use std::signer;
     #[test_only]
     use aptos_framework::managed_coin;
+    use aptos_framework::resource_account;
 
     // Uses <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // Structs >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    struct Vault<phantom CoinType> has key {
-        coin: Coin<CoinType>,
-        amount: u64,
+    struct Vault has key {
+        coin_addr: address,
         frozen: bool,
     }
 
-    /// Initialize the vault
-    public entry fun initialize<CoinType>(source: &signer, seed: vector<u8>, coin: Coin<CoinType>) {
-        let (resource_signer, _resource_signer_cap) = account::create_resource_account(source, seed);
-
-        move_to(
-            &resource_signer,
-            Vault<CoinType> {
-                coin,
-                amount: 0,
-                frozen: false,
-            }
-        );
+    struct VaultEvent has key {
+        resource_addr: address,
     }
 
     // Structs <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -48,34 +38,51 @@ module CoinVault::Vault {
 
     // Public entry functions >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    public entry fun deposit<CoinType>(depositor: &signer, resource_addr: address, coin: Coin<CoinType>, amount_dep: u64)
-    acquires Vault {
-        assert!(exists<Vault<CoinType>>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
+    /// Initialize the vault
+    public entry fun initialize(source: &signer, seed: vector<u8>, coin_addr: address) {
+        let (resource_signer, _resource_signer_cap) = account::create_resource_account(source, seed);
 
-        let vault = borrow_global_mut<Vault<CoinType>>(resource_addr);
+        /// Here, resource_signer.address represents the location in global storage of the newly initialized Vault
+        /// struct. This moves the Vault struct into its own address.
+        move_to(
+            &resource_signer,
+            Vault {
+                coin_addr,
+                frozen: false,
+            }
+        );
 
-        let frozen_status = vault.frozen;
-        assert!(frozen_status == false, error::invalid_state(E_FROZEN));
-
-        let amount = vault.amount;
-        amount = amount + amount_dep;
-
-        move_to(depositor, Vault<CoinType> {coin, amount, frozen: frozen_status})
+        /// Here, source.address represents the location in global storage of the admin/caller's address. This moves the
+        /// address of the Vault into the admin's account.
+        move_to(
+            source,
+            VaultEvent {
+                resource_addr: address_of(&resource_signer)
+            }
+        );
     }
 
-    public entry fun withdraw<CoinType>(withdrawor: &signer, resource_addr: address, coin: Coin<CoinType>, amount_with: u64)
+    public entry fun deposit<CoinType>(depositor: &signer, resource_addr: address, amount: u64)
     acquires Vault {
-        assert!(exists<Vault<CoinType>>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
+        assert!(exists<Vault>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
 
-        let vault = borrow_global_mut<Vault<CoinType>>(resource_addr);
+        let vault = borrow_global_mut<Vault>(resource_addr);
+        assert!(vault.frozen == false, error::invalid_state(E_FROZEN));
 
-        let frozen_status = vault.frozen;
-        assert!(frozen_status == false, error::invalid_state(E_FROZEN));
+        transfer<CoinType>(depositor, resource_addr, amount);
+    }
 
-        let amount = vault.amount;
-        amount = amount - amount_with;
+    public entry fun withdraw<CoinType>(withdrawor: &signer, resource_signer: &signer, amount: u64)
+    acquires Vault {
+        let resource_addr = address_of(resource_signer);
+        assert!(exists<Vault>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
 
-        move_to(withdrawor, Vault<CoinType> {coin, amount, frozen: frozen_status})
+        let vault = borrow_global_mut<Vault>(resource_addr);
+        assert!(vault.frozen == false, error::invalid_state(E_FROZEN));
+
+        let withdrawor_addr = address_of(withdrawor);
+
+        transfer<CoinType>(resource_signer, withdrawor_addr, amount)
     }
 
     // Public entry functions <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -86,13 +93,13 @@ module CoinVault::Vault {
     /// pause all deposits and withdrawals in a vault.
     fun pause<CoinType>(source: &signer)
     acquires Vault {
-        let frozen_status = &mut borrow_global_mut<Vault<CoinType>>(address_of(source)).frozen;
+        let frozen_status = &mut borrow_global_mut<Vault>(address_of(source)).frozen;
         *frozen_status = true;
     }
 
     fun unpause<CoinType>(source: &signer)
     acquires Vault {
-        let frozen_status = &mut borrow_global_mut<Vault<CoinType>>(address_of(source)).frozen;
+        let frozen_status = &mut borrow_global_mut<Vault>(address_of(source)).frozen;
         *frozen_status = false;
     }
 
@@ -125,17 +132,16 @@ module CoinVault::Vault {
         let account_addr = address_of(&account);
         managed_coin::mint<VaultCoin>(&account, account_addr, 20);
         assert!(coin::balance<VaultCoin>(account_addr) == 20, 1);
-        //let vault_coin = &borrow_global<Vault<VaultCoin>>(account_addr).coin;
 
         // Next, initialize the vault itself
-        initialize<VaultCoin>(
+        initialize(
             &account,
             b"seed",
-
+            @0x3,
         );
 
         // Check to see if the vault exists
-        assert!(exists<Vault<VaultCoin>>(account_addr), E_RESOURCE_DNE)
+        assert!(exists<Vault>(account_addr), E_RESOURCE_DNE)
     }
 
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
