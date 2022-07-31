@@ -4,6 +4,7 @@ module CoinVault::Vault {
 
     use std::error;
     use std::signer::address_of;
+    use std::vector;
 
     use aptos_framework::account;
     use aptos_framework::coin::{Self, Coin, transfer};
@@ -18,7 +19,13 @@ module CoinVault::Vault {
 
     // Structs >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
+    // Struct Share represents a user's personal share of the vault
+    struct Share has store, key {
+        num_coins: u64,
+    }
+
     struct Vault has key {
+        share_record: vector<Share>,
         coin_addr: address,
         frozen: bool,
     }
@@ -33,6 +40,7 @@ module CoinVault::Vault {
 
     const E_RESOURCE_DNE: u64 = 0;
     const E_FROZEN: u64 = 1;
+    const E_INSUFFICIENT_BALANCE: u64 = 2;
 
     // Error codes <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -42,18 +50,19 @@ module CoinVault::Vault {
     public entry fun initialize(source: &signer, seed: vector<u8>, coin_addr: address) {
         let (resource_signer, _resource_signer_cap) = account::create_resource_account(source, seed);
 
-        /// Here, resource_signer.address represents the location in global storage of the newly initialized Vault
-        /// struct. This moves the Vault struct into its own address.
+        // Here, resource_signer.address represents the location in global storage of the newly initialized Vault
+        // struct. This moves the Vault struct into its newly generated address.
         move_to(
             &resource_signer,
             Vault {
+                share_record: vector::empty<Share>(),
                 coin_addr,
                 frozen: false,
             }
         );
 
-        /// Here, source.address represents the location in global storage of the admin/caller's address. This moves the
-        /// address of the Vault into the admin's account.
+        // Here, source.address represents the location in global storage of the admin/caller's address. This moves the
+        // address of the Vault into the admin's account.
         move_to(
             source,
             VaultEvent {
@@ -62,27 +71,41 @@ module CoinVault::Vault {
         );
     }
 
-    public entry fun deposit<CoinType>(depositor: &signer, resource_addr: address, amount: u64)
+    public entry fun deposit<CoinType>(user: &signer, resource_addr: address, amount: u64)
     acquires Vault {
+        let user_addr = address_of(user);
+        // Check to see if the vault exists
         assert!(exists<Vault>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
 
-        let vault = borrow_global_mut<Vault>(resource_addr);
+        let vault = borrow_global<Vault>(resource_addr);
+        // Check to see if the vault is frozen
         assert!(vault.frozen == false, error::invalid_state(E_FROZEN));
 
-        transfer<CoinType>(depositor, resource_addr, amount);
+        let user_balance = coin::balance<CoinType>(user_addr);
+        // Check to make sure the user can deposit no more coins than they own
+        assert!(user_balance > amount, error::out_of_range(E_INSUFFICIENT_BALANCE));
+
+        transfer<CoinType>(user, resource_addr, amount);
+
+        move_to(user, Share { num_coins: amount })
     }
 
-    public entry fun withdraw<CoinType>(withdrawor: &signer, resource_signer: &signer, amount: u64)
-    acquires Vault {
+    public entry fun withdraw<CoinType>(user: &signer, resource_signer: &signer, amount: u64)
+    acquires Share, Vault {
         let resource_addr = address_of(resource_signer);
         assert!(exists<Vault>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
 
-        let vault = borrow_global_mut<Vault>(resource_addr);
+        let vault = borrow_global<Vault>(resource_addr);
         assert!(vault.frozen == false, error::invalid_state(E_FROZEN));
 
-        let withdrawor_addr = address_of(withdrawor);
+        let user_addr = address_of(user);
+        let user_balance = borrow_global_mut<Share>(user_addr).num_coins;
+        // Check to make sure the user cannot withdraw more coins than they have previously deposited
+        assert!(user_balance > amount, error::out_of_range(E_INSUFFICIENT_BALANCE));
 
-        transfer<CoinType>(resource_signer, withdrawor_addr, amount)
+        transfer<CoinType>(resource_signer, user_addr, amount);
+
+        user_balance = user_balance - amount;
     }
 
     // Public entry functions <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -113,6 +136,7 @@ module CoinVault::Vault {
 
     // The admin will be defined by account address 0x1.
     // Any other account (i.e. a user) will have account address 0x2.
+    // The address of the test coin, VaultCoin, is @0x3
 
     #[test(account = @0x1)]
     /// Initialize a coin, initialize a vault, and check to make sure it exists
