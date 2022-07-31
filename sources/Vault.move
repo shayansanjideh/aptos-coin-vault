@@ -12,29 +12,19 @@ module CoinVault::Vault {
     use std::signer;
     #[test_only]
     use aptos_framework::managed_coin;
+    use aptos_framework::resource_account;
 
     // Uses <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // Structs >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    struct Vault<phantom CoinType> has key {
-        coin: Coin<CoinType>,
-        amount: u64,
+    struct Vault has key {
+        coin_addr: address,
         frozen: bool,
     }
 
-    /// Initialize the vault
-    public entry fun initialize<CoinType>(source: &signer, seed: vector<u8>, coin: Coin<CoinType>) {
-        let (resource_signer, _resource_signer_cap) = account::create_resource_account(source, seed);
-
-        move_to(
-            &resource_signer,
-            Vault<CoinType> {
-                coin,
-                amount: 0,
-                frozen: false,
-            }
-        );
+    struct VaultEvent has key {
+        resource_addr: address,
     }
 
     // Structs <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -48,7 +38,27 @@ module CoinVault::Vault {
 
     // Public entry functions >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    public entry fun deposit<CoinType>(depositor: &signer, resource_addr: address, coin: Coin<CoinType>, amount_dep: u64)
+    /// Initialize the vault
+    public entry fun initialize(source: &signer, seed: vector<u8>) {
+        let (resource_signer, _resource_signer_cap) = account::create_resource_account(source, seed);
+
+        move_to(
+            &resource_signer,
+            Vault {
+                coin_addr: ,
+                frozen: false,
+            }
+        );
+
+        move_to(
+            source,
+            VaultEvent {
+            resource_addr: address_of(&resource_signer)
+            }
+        );
+    }
+
+    public entry fun deposit<CoinType>(depositor: &signer, resource_addr: address, amount_dep: u64)
     acquires Vault {
         assert!(exists<Vault<CoinType>>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
 
