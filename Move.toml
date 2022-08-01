@@ -7,5 +7,5 @@ AptosFramework = { local = "../../aptos-core/aptos-move/framework/aptos-framewor
 
 
 [addresses]
-CoinVault = "0x1"
+CoinVault = "0x5962D30754ADDA7D90B1BABEE3C172446B4F6C48E98FA2F6EE5BF5E95AC06DEC"
 
