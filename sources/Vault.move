@@ -38,13 +38,14 @@ module CoinVault::Vault {
     const E_RESOURCE_DNE: u64 = 0;
     const E_FROZEN: u64 = 1;
     const E_INSUFFICIENT_BALANCE: u64 = 2;
+    const E_INCORRECT_BALANCE: u64 = 3;
 
     // Error codes <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // Public entry functions >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     /// Initialize the vault
-    public entry fun initialize(source: &signer, seed: vector<u8>, coin_addr: address) {
+    public entry fun initialize(source: &signer, seed: vector<u8>, coin_addr: address): signer {
         let (resource_signer, _resource_signer_cap) = account::create_resource_account(source, seed);
 
         // Here, resource_signer.address represents the location in global storage of the newly initialized Vault
@@ -60,7 +61,9 @@ module CoinVault::Vault {
 
         // Here, source.address represents the location in global storage of the admin/caller's address. This moves the
         // address of the Vault into the admin's account.
-        move_to(source, VaultEvent { resource_addr: address_of(&resource_signer) });
+        let resource_addr = address_of(&resource_signer);
+        move_to(source, VaultEvent { resource_addr });
+        resource_signer
     }
 
     public entry fun deposit<CoinType>(user: &signer, resource_addr: address, amount: u64)
@@ -99,7 +102,10 @@ module CoinVault::Vault {
         // Transfer the coins from the vault (resource) to the user, and subtract that number from the user's personal
         // `Share` of the vault
         transfer<CoinType>(resource_signer, user_addr, amount);
-        move_from<Share>(resource_addr).num_coins;
+
+        // Shadow user_balance, update its value in global storage
+        let user_balance = &mut borrow_global_mut<Share>(user_addr).num_coins;
+        *user_balance = *user_balance - amount;
     }
 
     // Public entry functions <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -125,45 +131,132 @@ module CoinVault::Vault {
     // Tests >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     #[test_only]
-    /// VaultCoin struct to be used in tests
-    struct VaultCoin {}
+    /// TestCoin struct to be used in tests
+    struct TestCoin {}
 
     // The admin will be defined by account address 0x1.
     // A user account will have account address 0x2.
-    // The address of the test coin, VaultCoin, is @0x3
+    // The address of the test coin, TestCoin, is @0x3
 
     #[test(account = @0x1)]
     /// Initialize a coin, initialize a vault, check to make sure it exists, and deposit and withdraw appropriate
     /// amounts of the test coin.
     public fun test_init_dep_with(account: signer)
-    acquires Vault {
+    acquires Vault, Share {
         // First initialize a test coin, Vault Coin
-        managed_coin::initialize<VaultCoin>(
+        managed_coin::initialize<TestCoin>(
             &account,
-            b"Vault Coin",
-            b"VTC",
+            b"TestCoin",
+            b"TST",
             4,
             true
         );
-        assert!(coin::is_coin_initialized<VaultCoin>(), 0);
+        assert!(coin::is_coin_initialized<TestCoin>(), 0);
 
-        managed_coin::register<VaultCoin>(&account);
+        managed_coin::register<TestCoin>(&account);
         let account_addr = address_of(&account);
-        managed_coin::mint<VaultCoin>(&account, account_addr, 20);
-        assert!(coin::balance<VaultCoin>(account_addr) == 20, 1);
+        managed_coin::mint<TestCoin>(&account, account_addr, 20);
+        assert!(coin::balance<TestCoin>(account_addr) == 20, 1);
 
         // Next, initialize the vault itself
-        initialize(
+        let resource_signer = initialize(
             &account,
             b"seed",
             @0x3,
         );
 
+        let resource_addr = address_of(&resource_signer);
+
         // Check to see if the vault exists
-        assert!(exists<VaultEvent>(account_addr), E_RESOURCE_DNE);
+        assert!(exists<Vault>(resource_addr), E_RESOURCE_DNE);
 
         // deposit some coins into the vault
-        deposit<VaultCoin>(account, )
+        managed_coin::register<TestCoin>(&resource_signer);
+        deposit<TestCoin>(&account, resource_addr, 15);
+        assert!(coin::balance<TestCoin>(account_addr) == 5 &&
+                coin::balance<TestCoin>(resource_addr) == 15, E_INCORRECT_BALANCE);
+
+        // withdraw some coins back into your own account
+        withdraw<TestCoin>(&account, &resource_signer, 10);
+        assert!(coin::balance<TestCoin>(account_addr) == 15 &&
+                coin::balance<TestCoin>(resource_addr) == 5, E_INCORRECT_BALANCE);
+    }
+
+    #[test(account = @0x1)]
+    #[expected_failure]
+    public fun test_with_more_than_dep(account: signer)
+    acquires Vault, Share {
+        // Repeat same steps as above, up to the withdrawal part
+        managed_coin::initialize<TestCoin>(
+            &account,
+            b"TestCoin",
+            b"TST",
+            4,
+            true
+        );
+        assert!(coin::is_coin_initialized<TestCoin>(), 0);
+
+        managed_coin::register<TestCoin>(&account);
+        let account_addr = address_of(&account);
+        managed_coin::mint<TestCoin>(&account, account_addr, 20);
+        assert!(coin::balance<TestCoin>(account_addr) == 20, 1);
+
+        let resource_signer = initialize(
+            &account,
+            b"seed",
+            @0x3,
+        );
+
+        let resource_addr = address_of(&resource_signer);
+
+        assert!(exists<Vault>(resource_addr), E_RESOURCE_DNE);
+
+        managed_coin::register<TestCoin>(&resource_signer);
+        deposit<TestCoin>(&account, resource_addr, 15);
+        assert!(coin::balance<TestCoin>(account_addr) == 5 &&
+                coin::balance<TestCoin>(resource_addr) == 15, E_INCORRECT_BALANCE);
+
+        // withdraw more coins into your account than you deposited
+        withdraw<TestCoin>(&account, &resource_signer, 17);
+    }
+
+    #[test(account1 = @0x1, account2 = @0x2)]
+    #[expected_failure]
+    public fun test_with_someone_else_dep(account1: signer, account2: signer)
+    acquires Vault, Share {
+        // Repeat same steps as above, up to the withdrawal part
+        managed_coin::initialize<TestCoin>(
+            &account1,
+            b"TestCoin",
+            b"TST",
+            4,
+            true
+        );
+        assert!(coin::is_coin_initialized<TestCoin>(), 0);
+
+        managed_coin::register<TestCoin>(&account1);
+        managed_coin::register<TestCoin>(&account2);
+        let account_addr1 = address_of(&account1);
+        managed_coin::mint<TestCoin>(&account1, account_addr1, 20);
+        assert!(coin::balance<TestCoin>(account_addr1) == 20, 1);
+
+        let resource_signer = initialize(
+            &account1,
+            b"seed",
+            @0x3,
+        );
+
+        let resource_addr = address_of(&resource_signer);
+
+        assert!(exists<Vault>(resource_addr), E_RESOURCE_DNE);
+
+        managed_coin::register<TestCoin>(&resource_signer);
+        deposit<TestCoin>(&account1, resource_addr, 15);
+        assert!(coin::balance<TestCoin>(account_addr1) == 5 &&
+                coin::balance<TestCoin>(resource_addr) == 15, E_INCORRECT_BALANCE);
+
+        // Try to withdraw account1's coins into account2's account
+        withdraw<TestCoin>(&account2, &resource_signer, 17);
     }
 
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
