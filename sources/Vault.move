@@ -7,20 +7,17 @@ module CoinVault::Vault {
     use std::vector;
 
     use aptos_framework::account;
-    use aptos_framework::coin::{Self, Coin, transfer};
+    use aptos_framework::coin::{Self, transfer};
 
     #[test_only]
-    use std::signer;
-    #[test_only]
     use aptos_framework::managed_coin;
-    use aptos_framework::resource_account;
 
     // Uses <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // Structs >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     // Struct Share represents a user's personal share of the vault
-    struct Share has store, key {
+    struct Share has store, drop, key {
         num_coins: u64,
     }
 
@@ -63,12 +60,7 @@ module CoinVault::Vault {
 
         // Here, source.address represents the location in global storage of the admin/caller's address. This moves the
         // address of the Vault into the admin's account.
-        move_to(
-            source,
-            VaultEvent {
-                resource_addr: address_of(&resource_signer)
-            }
-        );
+        move_to(source, VaultEvent { resource_addr: address_of(&resource_signer) });
     }
 
     public entry fun deposit<CoinType>(user: &signer, resource_addr: address, amount: u64)
@@ -85,9 +77,10 @@ module CoinVault::Vault {
         // Check to make sure the user can deposit no more coins than they own
         assert!(user_balance > amount, error::out_of_range(E_INSUFFICIENT_BALANCE));
 
+        // Transfer the coins from the user to the vault (resource), and add that number to the user's personal `Share`
+        // of the vault
         transfer<CoinType>(user, resource_addr, amount);
-
-        move_to(user, Share { num_coins: amount })
+        move_to(user, Share { num_coins: amount });
     }
 
     public entry fun withdraw<CoinType>(user: &signer, resource_signer: &signer, amount: u64)
@@ -103,9 +96,10 @@ module CoinVault::Vault {
         // Check to make sure the user cannot withdraw more coins than they have previously deposited
         assert!(user_balance > amount, error::out_of_range(E_INSUFFICIENT_BALANCE));
 
+        // Transfer the coins from the vault (resource) to the user, and subtract that number from the user's personal
+        // `Share` of the vault
         transfer<CoinType>(resource_signer, user_addr, amount);
-
-        user_balance = user_balance - amount;
+        move_from<Share>(resource_addr).num_coins;
     }
 
     // Public entry functions <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -135,12 +129,13 @@ module CoinVault::Vault {
     struct VaultCoin {}
 
     // The admin will be defined by account address 0x1.
-    // Any other account (i.e. a user) will have account address 0x2.
+    // A user account will have account address 0x2.
     // The address of the test coin, VaultCoin, is @0x3
 
     #[test(account = @0x1)]
-    /// Initialize a coin, initialize a vault, and check to make sure it exists
-    public fun init_vault_test(account: signer)
+    /// Initialize a coin, initialize a vault, check to make sure it exists, and deposit and withdraw appropriate
+    /// amounts of the test coin.
+    public fun test_init_dep_with(account: signer)
     acquires Vault {
         // First initialize a test coin, Vault Coin
         managed_coin::initialize<VaultCoin>(
@@ -165,7 +160,10 @@ module CoinVault::Vault {
         );
 
         // Check to see if the vault exists
-        assert!(exists<Vault>(account_addr), E_RESOURCE_DNE)
+        assert!(exists<VaultEvent>(account_addr), E_RESOURCE_DNE);
+
+        // deposit some coins into the vault
+        deposit<VaultCoin>(account, )
     }
 
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
