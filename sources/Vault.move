@@ -67,7 +67,7 @@ module CoinVault::Vault {
     }
 
     public entry fun deposit<CoinType>(user: &signer, resource_addr: address, amount: u64)
-    acquires Vault {
+    acquires Vault, Share {
         let user_addr = address_of(user);
         // Check to see if the vault exists
         assert!(exists<Vault>(resource_addr), error::invalid_argument(E_RESOURCE_DNE));
@@ -83,7 +83,14 @@ module CoinVault::Vault {
         // Transfer the coins from the user to the vault (resource), and add that number to the user's personal `Share`
         // of the vault
         transfer<CoinType>(user, resource_addr, amount);
-        move_to(user, Share { num_coins: amount });
+
+        if (!exists<Share>(user_addr)) {
+            move_to(user, Share { num_coins: amount });
+        } else {
+            let num_coins = &mut borrow_global_mut<Share>(user_addr).num_coins;
+            *num_coins = *num_coins + amount;
+        }
+
     }
 
     public entry fun withdraw<CoinType>(user: &signer, resource_signer: &signer, amount: u64)
@@ -134,14 +141,13 @@ module CoinVault::Vault {
     /// TestCoin struct to be used in tests
     struct TestCoin {}
 
-    // The admin will be defined by account address 0x1.
     // A user account will have account address 0x2.
-    // The address of the test coin, TestCoin, is @0x3
+    // The address of TestCoin is @0x3
 
-    #[test(account = @0x1)]
+    #[test(account = @0x30BE782867AD1265908E740C8D845B5A99EB61636000D9869888C0BF39E70437)]
     /// Initialize a coin, initialize a vault, check to make sure it exists, and deposit and withdraw appropriate
     /// amounts of the test coin.
-    public fun test_init_dep_with(account: signer)
+    public fun test_init_deposit_withdraw(account: signer)
     acquires Vault, Share {
         // First initialize a test coin, Vault Coin
         managed_coin::initialize<TestCoin>(
@@ -182,9 +188,9 @@ module CoinVault::Vault {
                 coin::balance<TestCoin>(resource_addr) == 5, E_INCORRECT_BALANCE);
     }
 
-    #[test(account = @0x1)]
+    #[test(account = @0x30BE782867AD1265908E740C8D845B5A99EB61636000D9869888C0BF39E70437)]
     #[expected_failure]
-    public fun test_with_more_than_dep(account: signer)
+    public fun test_withdraw_more_than_deposit(account: signer)
     acquires Vault, Share {
         // Repeat same steps as above, up to the withdrawal part
         managed_coin::initialize<TestCoin>(
@@ -220,9 +226,9 @@ module CoinVault::Vault {
         withdraw<TestCoin>(&account, &resource_signer, 17);
     }
 
-    #[test(account1 = @0x1, account2 = @0x2)]
+    #[test(account1 = @0x30BE782867AD1265908E740C8D845B5A99EB61636000D9869888C0BF39E70437, account2 = @0x2)]
     #[expected_failure]
-    public fun test_with_someone_else_dep(account1: signer, account2: signer)
+    public fun test_withdraw_someone_elses_deposit(account1: signer, account2: signer)
     acquires Vault, Share {
         // Repeat same steps as above, up to the withdrawal part
         managed_coin::initialize<TestCoin>(
@@ -257,6 +263,52 @@ module CoinVault::Vault {
 
         // Try to withdraw account1's coins into account2's account
         withdraw<TestCoin>(&account2, &resource_signer, 17);
+    }
+
+    #[test(account = @0x30BE782867AD1265908E740C8D845B5A99EB61636000D9869888C0BF39E70437)]
+    public fun test_consecutive_deposits_and_withdrawals(account: signer)
+    acquires Vault, Share {
+        managed_coin::initialize<TestCoin>(
+            &account,
+            b"TestCoin",
+            b"TST",
+            4,
+            true
+        );
+        assert!(coin::is_coin_initialized<TestCoin>(), 0);
+
+        managed_coin::register<TestCoin>(&account);
+        let account_addr = address_of(&account);
+        managed_coin::mint<TestCoin>(&account, account_addr, 50);
+        assert!(coin::balance<TestCoin>(account_addr) == 50, 1);
+
+        let resource_signer = initialize(
+            &account,
+            b"seed",
+            @0x3,
+        );
+
+        let resource_addr = address_of(&resource_signer);
+
+        assert!(exists<Vault>(resource_addr), E_RESOURCE_DNE);
+
+        // make two consecutive deposits, and then a withdrawal
+        managed_coin::register<TestCoin>(&resource_signer);
+        deposit<TestCoin>(&account, resource_addr, 15);
+        assert!(coin::balance<TestCoin>(account_addr) == 35 &&
+                coin::balance<TestCoin>(resource_addr) == 15, E_INCORRECT_BALANCE);
+
+        deposit<TestCoin>(&account, resource_addr, 10);
+        assert!(coin::balance<TestCoin>(account_addr) == 25 &&
+                coin::balance<TestCoin>(resource_addr) == 25, E_INCORRECT_BALANCE);
+
+        withdraw<TestCoin>(&account, &resource_signer, 20);
+        assert!(coin::balance<TestCoin>(account_addr) == 45 &&
+                coin::balance<TestCoin>(resource_addr) == 5, E_INCORRECT_BALANCE);
+
+        withdraw<TestCoin>(&account, &resource_signer, 3);
+        assert!(coin::balance<TestCoin>(account_addr) == 48 &&
+                coin::balance<TestCoin>(resource_addr) == 2, E_INCORRECT_BALANCE);
     }
 
     // Tests <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
