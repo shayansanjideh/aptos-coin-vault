@@ -4,7 +4,6 @@ module CoinVault::Vault {
 
     use std::error;
     use std::signer::address_of;
-    use std::vector;
 
     use aptos_framework::account;
     use aptos_framework::coin::{Self, transfer};
@@ -22,7 +21,6 @@ module CoinVault::Vault {
     }
 
     struct Vault has key {
-        share_record: vector<Share>,
         coin_addr: address,
         frozen: bool,
     }
@@ -50,10 +48,9 @@ module CoinVault::Vault {
 
         // Here, resource_signer.address represents the location in global storage of the newly initialized Vault
         // struct. This moves the Vault struct into its newly generated address.
-        move_to(
+        move_to<Vault>(
             &resource_signer,
             Vault {
-                share_record: vector::empty<Share>(),
                 coin_addr,
                 frozen: false,
             }
@@ -62,7 +59,8 @@ module CoinVault::Vault {
         // Here, source.address represents the location in global storage of the admin/caller's address. This moves the
         // address of the Vault into the admin's account.
         let resource_addr = address_of(&resource_signer);
-        move_to(source, VaultEvent { resource_addr });
+        move_to<VaultEvent>(source, VaultEvent { resource_addr });
+
         resource_signer
     }
 
@@ -85,7 +83,7 @@ module CoinVault::Vault {
         transfer<CoinType>(user, resource_addr, amount);
 
         if (!exists<Share>(user_addr)) {
-            move_to(user, Share { num_coins: amount });
+            move_to<Share>(user, Share { num_coins: amount });
         } else {
             let num_coins = &mut borrow_global_mut<Share>(user_addr).num_coins;
             *num_coins = *num_coins + amount;
